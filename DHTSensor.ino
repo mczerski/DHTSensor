@@ -48,6 +48,8 @@
 #include <SPI.h>
 #include <DHT.h>
 
+using namespace mymysensors;
+
 // Set this to the pin you connected the DHT's data pin to
 #define DHT_DATA_PIN 6
 #define DHT_POWER_PIN 17
@@ -62,21 +64,12 @@
 // Must be >1000ms for DHT22 and >2000ms for DHT11
 static const unsigned long SLEEP_TIME = 600000;
 
+DHT dht;
 MyValue<float> humidity(0, V_HUM, S_HUM);
 MyValue<float> temperature(1, V_TEMP, S_TEMP);
+PowerManager& powerManager = PowerManager::initInstance(POWER_BOOST_PIN, true);
 
-DHT dht;
-
-bool powerOn()
-{
-  pinMode(POWER_BOOST_PIN, OUTPUT);
-  digitalWrite(POWER_BOOST_PIN, HIGH);
-  return true;
-}
-
-bool b = powerOn();
-
-void presentation()  
+void presentation()
 {
   // Send the sketch version information to the gateway
   sendSketchInfo("TemperatureAndHumidity", "1.2");
@@ -87,14 +80,11 @@ void presentation()
 
 void setup()
 {
-  myMySensorsSetup();
+  powerManager.setBatteryPin(A0);
   pinMode(MY_LED, OUTPUT);
   digitalWrite(MY_LED, LOW);
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-
-  pinMode(POWER_BOOST_PIN, OUTPUT);
-  digitalWrite(POWER_BOOST_PIN, HIGH);
 
   pinMode(DHT_POWER_PIN, OUTPUT);
   digitalWrite(DHT_POWER_PIN, LOW);
@@ -105,7 +95,7 @@ void setup()
 void loop()
 {
   checkTransport();
-  digitalWrite(POWER_BOOST_PIN, HIGH);
+  powerManager.turnBoosterOn();
   digitalWrite(DHT_POWER_PIN, HIGH);
   sleep(dht.getMinimumSamplingPeriod() + 1020);
   dht.readSensor(true);
@@ -121,7 +111,7 @@ void loop()
   bool success = temperature.updateValue(temp);
   success &= humidity.updateValue(hum);
 
-  digitalWrite(POWER_BOOST_PIN, LOW);
+  powerManager.turnBoosterOff();
 
   unsigned long sleepTimeout = getSleepTimeout(success, SLEEP_TIME);
 
