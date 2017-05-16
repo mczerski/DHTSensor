@@ -52,13 +52,14 @@ using namespace mymysensors;
 
 // Set this to the pin you connected the DHT's data pin to
 #define DHT_DATA_PIN 6
+// Set this to the pin you connected the DHT's vcc pin to
 #define DHT_POWER_PIN 17
+// Set this to the pin you connected the wakeup button to
 #define BUTTON_PIN 2
+// Set this to the pin you connected led to
 #define MY_LED 19
+// Set this to the pin you connected dc/dc converter enable to
 #define POWER_BOOST_PIN 18
-
-// Set this offset if the sensor has a permanent small offset to the real temperatures
-#define SENSOR_TEMP_OFFSET 0
 
 // Sleep time between sensor updates (in milliseconds)
 // Must be >1000ms for DHT22 and >2000ms for DHT11
@@ -94,30 +95,38 @@ void setup()
 
 void loop()
 {
+  //if the transport layer is not operational state (in case the GW was down)
+  //this will give time for the transport to recover
   checkTransport();
   powerManager.turnBoosterOn();
   digitalWrite(DHT_POWER_PIN, HIGH);
-  sleep(dht.getMinimumSamplingPeriod() + 1020);
+  //wait for everything to setup (minimum DHT sampling rate + 1s for dc/dc converter)
+  sleep(dht.getMinimumSamplingPeriod() + 1000);
   dht.readSensor(true);
 
+  //turn off led (in case it was turned on by the wakeup button)
   digitalWrite(MY_LED, HIGH);
 
   float temp = dht.getTemperature();
   float hum = dht.getHumidity();
+  //this is necessary because dht library leaves the pull-up resistor enabled
+  //and the dht sensor pulls the data pin low, so it consumes a lot of unnecesary power
   pinMode(DHT_DATA_PIN, INPUT);
   digitalWrite(DHT_POWER_PIN, LOW);
 
-  temp += SENSOR_TEMP_OFFSET;
+  //update values (send them to GW if necessary)
   bool success = temperature.updateValue(temp);
   success &= humidity.updateValue(hum);
 
   powerManager.turnBoosterOff();
 
+  //this will calculate sleep timeout taking into account if the communication with GW was succesful
   unsigned long sleepTimeout = getSleepTimeout(success, SLEEP_TIME);
 
   int wakeUpCause = sleep(digitalPinToInterrupt(BUTTON_PIN), FALLING, sleepTimeout);
   if (wakeUpCause == digitalPinToInterrupt(BUTTON_PIN)) {
     digitalWrite(MY_LED, LOW);
+    //wakeup button forces sending data to GW (even if the readings wont change)
     temperature.forceResend();
     humidity.forceResend();
   }
